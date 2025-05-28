@@ -42,6 +42,8 @@ class WallCercle:
         self.width = width
         self.broken = False  # cercle intact au départ
         self.rotation_speed = 0.01  # radians par frame
+        self.shrink_speed = 40  # pixels par seconde
+
 
         # définir le trou en angles radians
         self.hole_start_angle = math.radians(270)  # exemple trou entre 270° et 300°
@@ -85,9 +87,15 @@ class WallCercle:
         else:
             return self.hole_start_angle <= angle <= self.hole_end_angle
 
-    def update(self):
+    def update(self, dt):
         self.hole_start_angle = (self.hole_start_angle + self.rotation_speed) % (2 * math.pi)
         self.hole_end_angle = (self.hole_end_angle + self.rotation_speed) % (2 * math.pi)
+
+        if not self.broken:
+            self.radius -= self.shrink_speed * dt
+            if self.radius < 20:  # empêche qu’un cercle disparaisse totalement
+                self.radius = 20
+
 
 
 class Balle:
@@ -248,30 +256,22 @@ while running:
 
     screen.fill((30, 30, 30))
 
+    for Cercle in Cercles:
+        Cercle.update(dt)
+        if not Cercle.broken:
+            Cercle.draw(screen)
 
-    while running:
-        dt = clock.tick(60) / 1000.0
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
-                running = False
+    for i, b in enumerate(balles):
+        b.update(dt)
+        b.check_bounce_edges(WIDTH, HEIGHT)
+        for cercle in Cercles:
+            b.check_wall_cercle_collision(cercle)
+        for autre in balles[i + 1:]:
+            b.check_circle_collision(autre)
+        b.draw(screen)
 
-        screen.fill((30, 30, 30))
+    pygame.display.flip()
 
-        for Cercle in Cercles:
-            Cercle.update()
-            if not Cercle.broken:
-                Cercle.draw(screen)
-
-        for i, b in enumerate(balles):
-            b.update(dt)
-            b.check_bounce_edges(WIDTH, HEIGHT)
-            for cercle in Cercles:  # <- ici
-                b.check_wall_cercle_collision(cercle)
-            for autre in balles[i + 1:]:
-                b.check_circle_collision(autre)
-            b.draw(screen)
-
-        pygame.display.flip()
 
 
 pygame.quit()

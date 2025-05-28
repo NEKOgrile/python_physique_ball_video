@@ -41,6 +41,7 @@ class WallCercle:
         self.color = color
         self.width = width
         self.broken = False  # cercle intact au départ
+        self.rotation_speed = 0.01  # radians par frame
 
         # définir le trou en angles radians
         self.hole_start_angle = math.radians(270)  # exemple trou entre 270° et 300°
@@ -50,28 +51,27 @@ class WallCercle:
         if self.broken:
             return
 
-        rect = pygame.Rect(self.pos.x - self.radius, self.pos.y - self.radius, self.radius * 2, self.radius * 2)
-        pygame.draw.circle(surface, (255, 255, 255), (int(self.pos.x), int(self.pos.y)), self.radius, self.width)
+        # Dessine le cercle entier
+        pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), self.radius, self.width)
 
-        # Dessine le trou (secteur arc) dans la couleur du fond pour "effacer" cette portion
+        # Dessine le "trou" avec un polygone noir pour masquer la portion
+        points = [self.pos]
         start_deg = math.degrees(self.hole_start_angle)
         end_deg = math.degrees(self.hole_end_angle)
-        arc_angle = end_deg - start_deg
 
-        # pygame.draw.arc ne remplit pas, donc on utilise un polygone pour faire un "trou"
-        points = [self.pos]
+        # Gère le cas où le trou dépasse 360° (boucle)
+        if end_deg < start_deg:
+            end_deg += 360
 
-        # On crée plusieurs points entre start et end angle pour approximier le secteur
         step = 1  # degré
         for angle_deg in range(int(start_deg), int(end_deg)+1, step):
-            angle_rad = math.radians(angle_deg)
+            angle_rad = math.radians(angle_deg % 360)
             x = self.pos.x + self.radius * math.cos(angle_rad)
             y = self.pos.y + self.radius * math.sin(angle_rad)
             points.append(Vector2(x, y))
 
-        pygame.draw.polygon(surface, (30, 30, 30), points)  # fond de l'écran (noir)
-
-
+        if len(points) >= 3:
+            pygame.draw.polygon(surface, (30, 30, 30), points)  # couleur du fond
 
     def is_in_hole(self, pos):
         vect = Vector2(pos) - self.pos
@@ -79,12 +79,15 @@ class WallCercle:
         if angle < 0:
             angle += 2 * math.pi
 
-        # Cas où le trou traverse 0 (pas ici, mais pour généralité)
+        # Cas spécial : le trou traverse 0 radians
         if self.hole_start_angle > self.hole_end_angle:
             return angle >= self.hole_start_angle or angle <= self.hole_end_angle
         else:
             return self.hole_start_angle <= angle <= self.hole_end_angle
 
+    def update(self):
+        self.hole_start_angle = (self.hole_start_angle + self.rotation_speed) % (2 * math.pi)
+        self.hole_end_angle = (self.hole_end_angle + self.rotation_speed) % (2 * math.pi)
 
 
 class Balle:
@@ -216,7 +219,11 @@ class Balle:
 
 
 
-Cercle = WallCercle(WIDTH // 2, HEIGHT // 2, 300, "white", 4)
+Cercle1 = WallCercle(WIDTH // 2, HEIGHT // 2, 300, "white", 4)
+Cercle2 = WallCercle(WIDTH // 2, HEIGHT // 2, 320, "white", 4)
+Cercles = [Cercle1, Cercle2]
+
+
 
 balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 4, 30, (200, 50, 50))
 balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 4, 30, (50, 50, 200))
@@ -230,18 +237,31 @@ while running:
             running = False
 
     screen.fill((30, 30, 30))
-    if not Cercle.broken:
-        Cercle.draw(screen)
 
 
-    for i, b in enumerate(balles):
-        b.update(dt)
-        b.check_bounce_edges(WIDTH, HEIGHT)
-        b.check_wall_cercle_collision(Cercle)
-        for autre in balles[i + 1:]:
-            b.check_circle_collision(autre)
-        b.draw(screen)
+    while running:
+        dt = clock.tick(60) / 1000.0
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
+                running = False
 
-    pygame.display.flip()
+        screen.fill((30, 30, 30))
+
+        for Cercle in Cercles:
+            Cercle.update()
+            if not Cercle.broken:
+                Cercle.draw(screen)
+
+        for i, b in enumerate(balles):
+            b.update(dt)
+            b.check_bounce_edges(WIDTH, HEIGHT)
+            for cercle in Cercles:  # <- ici
+                b.check_wall_cercle_collision(cercle)
+            for autre in balles[i + 1:]:
+                b.check_circle_collision(autre)
+            b.draw(screen)
+
+        pygame.display.flip()
+
 
 pygame.quit()

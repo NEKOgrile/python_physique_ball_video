@@ -219,9 +219,19 @@ class Balle:
 
 
 
-Cercle1 = WallCercle(WIDTH // 2, HEIGHT // 2, 300, "white", 4)
-Cercle2 = WallCercle(WIDTH // 2, HEIGHT // 2, 320, "white", 4)
-Cercles = [Cercle1, Cercle2]
+# Valeurs initiales
+nombre_cercles = 100
+rayon_depart = 300
+ecart_rayon = 20  # car 320 - 300 = 20 dans ton exemple
+
+
+# Création des cercles avec écart constant
+Cercles = []
+for i in range(nombre_cercles):
+    rayon = rayon_depart + i * ecart_rayon
+    cercle = WallCercle(WIDTH // 2, HEIGHT // 2, rayon, "white", 4)
+    Cercles.append(cercle)
+
 
 
 

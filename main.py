@@ -1,5 +1,7 @@
 import pygame
 from pygame.math import Vector2
+import random
+import math
 
 pygame.init()
 info = pygame.display.Info()
@@ -8,15 +10,82 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.NOFRAME)
 pygame.display.set_caption("Simulation de balle physique")
 clock = pygame.time.Clock()
 
-class WallCercle: 
-    def __init__(self , x , y , radius , color , width ):
+
+class Spark:
+    def __init__(self, pos):
+        self.pos = Vector2(pos)
+        angle = random.uniform(0, 2 * math.pi)
+        speed = random.uniform(50, 150)
+        self.vel = Vector2(speed * math.cos(angle), speed * math.sin(angle))
+        self.life = 0.5
+        self.radius = random.randint(2, 4)
+
+    def update(self, dt):
+        self.life -= dt
+        self.pos += self.vel * dt
+        self.vel *= 0.8
+
+    def draw(self, surface):
+        if self.life > 0:
+            alpha = int(255 * (self.life / 0.5))
+            color = (255, random.randint(100, 150), 0, alpha)
+            spark_surface = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(spark_surface, color, (self.radius, self.radius), self.radius)
+            surface.blit(spark_surface, (self.pos.x - self.radius, self.pos.y - self.radius))
+
+
+class WallCercle:
+    def __init__(self, x, y, radius, color, width):
         self.pos = Vector2(x, y)
         self.radius = radius
         self.color = color
         self.width = width
+        self.broken = False  # cercle intact au départ
+
+        # définir le trou en angles radians
+        self.hole_start_angle = math.radians(270)  # exemple trou entre 270° et 300°
+        self.hole_end_angle = math.radians(300)
 
     def draw(self, surface):
+        if self.broken:
+            return
+
+        rect = pygame.Rect(self.pos.x - self.radius, self.pos.y - self.radius, self.radius * 2, self.radius * 2)
         pygame.draw.circle(surface, (255, 255, 255), (int(self.pos.x), int(self.pos.y)), self.radius, self.width)
+
+        # Dessine le trou (secteur arc) dans la couleur du fond pour "effacer" cette portion
+        start_deg = math.degrees(self.hole_start_angle)
+        end_deg = math.degrees(self.hole_end_angle)
+        arc_angle = end_deg - start_deg
+
+        # pygame.draw.arc ne remplit pas, donc on utilise un polygone pour faire un "trou"
+        points = [self.pos]
+
+        # On crée plusieurs points entre start et end angle pour approximier le secteur
+        step = 1  # degré
+        for angle_deg in range(int(start_deg), int(end_deg)+1, step):
+            angle_rad = math.radians(angle_deg)
+            x = self.pos.x + self.radius * math.cos(angle_rad)
+            y = self.pos.y + self.radius * math.sin(angle_rad)
+            points.append(Vector2(x, y))
+
+        pygame.draw.polygon(surface, (30, 30, 30), points)  # fond de l'écran (noir)
+
+
+
+    def is_in_hole(self, pos):
+        vect = Vector2(pos) - self.pos
+        angle = math.atan2(vect.y, vect.x)
+        if angle < 0:
+            angle += 2 * math.pi
+
+        # Cas où le trou traverse 0 (pas ici, mais pour généralité)
+        if self.hole_start_angle > self.hole_end_angle:
+            return angle >= self.hole_start_angle or angle <= self.hole_end_angle
+        else:
+            return self.hole_start_angle <= angle <= self.hole_end_angle
+
+
 
 class Balle:
     def __init__(self, x, y, radius, color):
@@ -26,19 +95,61 @@ class Balle:
         self.color = color
         self.mass = radius
         self.restitution = 1
+        self.sparks = []
+        self.boost_timer = 0
+        self.boost_duration = 0.2
+        self.boost_elapsed = 0.0
+        self.boost_speed_increase = 1.5
+        self.base_vel = Vector2(0, 0)  # vitesse sans boost
 
     def draw(self, surface):
-        # Dessine un contour blanc
+        for spark in self.sparks:
+            spark.draw(surface)
+
+        if self.boost_timer > 0:
+            alpha = int(128 + 127 * ((self.boost_timer % 0.5) * 2))
+            halo_surface = pygame.Surface((self.radius * 6, self.radius * 6), pygame.SRCALPHA)
+            pygame.draw.circle(
+                halo_surface,
+                (self.color[0], self.color[1], self.color[2], alpha),
+                (self.radius * 3, self.radius * 3),
+                self.radius * 2
+            )
+            surface.blit(halo_surface, (self.pos.x - self.radius * 3, self.pos.y - self.radius * 3))
+
         pygame.draw.circle(surface, (255, 255, 255), (int(self.pos.x), int(self.pos.y)), self.radius + 6)
-        # Dessine la balle colorée
         pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), self.radius)
 
     def update(self, dt):
         g = 500.0
         self.vel.y += g * dt
-        # SUPPRIMER l'amortissement pour garder la vitesse constante
-        # self.vel *= 0.99  # supprimé
-        self.pos += self.vel * dt
+
+        # Détermine facteur de boost (1 si pas de boost)
+        boost_factor = 1.0
+        if self.boost_timer > 0:
+            self.boost_elapsed += dt
+
+            if self.boost_elapsed <= self.boost_duration:
+                boost_factor = self.boost_speed_increase
+            else:
+                time_after = self.boost_elapsed - self.boost_duration
+                if time_after <= 0.5:
+                    boost_factor = self.boost_speed_increase - (self.boost_speed_increase - 1) * (time_after / 0.5)
+                else:
+                    self.boost_timer = 0
+                    self.boost_elapsed = 0
+
+            self.boost_timer -= dt
+
+            # Mise à jour des étincelles
+            for spark in self.sparks[:]:
+                spark.update(dt)
+                if spark.life <= 0:
+                    self.sparks.remove(spark)
+
+        # Mise à jour position avec facteur boost appliqué uniquement au déplacement
+        self.pos += self.vel * boost_factor * dt
+
 
     def check_bounce_edges(self, width, height):
         if self.pos.x - self.radius < 0:
@@ -53,7 +164,6 @@ class Balle:
         elif self.pos.y + self.radius > height:
             self.pos.y = height - self.radius
             self.vel.y *= -self.restitution
-            # On force une vitesse minimale vers le haut pour éviter que ça colle
             if abs(self.vel.y) < 50:
                 self.vel.y = -50
 
@@ -61,7 +171,7 @@ class Balle:
         offset = self.pos - autre.pos
         dist_sq = offset.length_squared()
         rayon_min = self.radius + autre.radius
-        if dist_sq < rayon_min**2:
+        if dist_sq < rayon_min ** 2:
             dist = max(offset.length(), 1e-8)
             overlap = rayon_min - dist
             correction = offset.normalize() * (overlap / 2)
@@ -75,19 +185,39 @@ class Balle:
                 self.vel -= impulse * autre.mass * normal
                 autre.vel += impulse * self.mass * normal
 
+                # Active le boost si ce n'est pas déjà en cours
+                if self.boost_timer <= 0:
+                    self.boost_timer = 0.5
+                    self.boost_elapsed = 0
+
+                if autre.boost_timer <= 0:
+                    autre.boost_timer = 0.5
+                    autre.boost_elapsed = 0
+
+                for _ in range(5):
+                    self.sparks.append(Spark(self.pos))
+
+
     def check_wall_cercle_collision(self, cercle):
+        if cercle.broken:
+            return  # ne fait rien si le cercle est déjà cassé
+
         offset = self.pos - cercle.pos
         distance = offset.length()
-        if distance + self.radius > cercle.radius:
-            normal = offset.normalize()
-            self.vel = self.vel.reflect(normal) * self.restitution
-            overlap = distance + self.radius - cercle.radius
-            self.pos -= normal * overlap
 
-# création du cercle
+        if distance + self.radius > cercle.radius:
+            if cercle.is_in_hole(self.pos):
+                cercle.broken = True
+            else:
+                normal = offset.normalize()
+                self.vel = self.vel.reflect(normal) * self.restitution
+                overlap = distance + self.radius - cercle.radius
+                self.pos -= normal * overlap
+
+
+
 Cercle = WallCercle(WIDTH // 2, HEIGHT // 2, 300, "white", 4)
 
-# création des balles
 balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 4, 30, (200, 50, 50))
 balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 4, 30, (50, 50, 200))
 balles = [balle1, balle2]
@@ -100,7 +230,9 @@ while running:
             running = False
 
     screen.fill((30, 30, 30))
-    Cercle.draw(screen)
+    if not Cercle.broken:
+        Cercle.draw(screen)
+
 
     for i, b in enumerate(balles):
         b.update(dt)

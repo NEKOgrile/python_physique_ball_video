@@ -35,45 +35,25 @@ class Spark:
 
 
 class WallCercle:
-    def __init__(self, x, y, radius, color, width):
+    def __init__(self, x, y, radius, color, width, base_angle, rotation_speed, hole_opening_angle_rad):
         self.pos = Vector2(x, y)
         self.radius = radius
         self.color = color
         self.width = width
-        self.broken = False  # cercle intact au départ
-        self.rotation_speed = 0.01  # radians par frame
-        self.shrink_speed = 40  # pixels par seconde
+        self.broken = False
+        self.exploded = False
+        self.base_angle = base_angle
+        self.rotation_speed = rotation_speed
+        self.hole_opening_angle = hole_opening_angle_rad
+        self.time = 0
+        self.sparks = []
+        self.opacity = 255
+        self.fade_speed = 300
+        self.flash_timer = 0
 
-
-        # définir le trou en angles radians
-        self.hole_start_angle = math.radians(270)  # exemple trou entre 270° et 300°
-        self.hole_end_angle = math.radians(300)
-
-    def draw(self, surface):
-        if self.broken:
-            return
-
-        # Dessine le cercle entier
-        pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), self.radius, self.width)
-
-        # Dessine le "trou" avec un polygone noir pour masquer la portion
-        points = [self.pos]
-        start_deg = math.degrees(self.hole_start_angle)
-        end_deg = math.degrees(self.hole_end_angle)
-
-        # Gère le cas où le trou dépasse 360° (boucle)
-        if end_deg < start_deg:
-            end_deg += 360
-
-        step = 1  # degré
-        for angle_deg in range(int(start_deg), int(end_deg)+1, step):
-            angle_rad = math.radians(angle_deg % 360)
-            x = self.pos.x + self.radius * math.cos(angle_rad)
-            y = self.pos.y + self.radius * math.sin(angle_rad)
-            points.append(Vector2(x, y))
-
-        if len(points) >= 3:
-            pygame.draw.polygon(surface, (30, 30, 30), points)  # couleur du fond
+        # Onde de choc
+        self.shockwave_radius = 0
+        self.shockwave_alpha = 0
 
     def is_in_hole(self, pos):
         vect = Vector2(pos) - self.pos
@@ -81,21 +61,103 @@ class WallCercle:
         if angle < 0:
             angle += 2 * math.pi
 
-        # Cas spécial : le trou traverse 0 radians
-        if self.hole_start_angle > self.hole_end_angle:
-            return angle >= self.hole_start_angle or angle <= self.hole_end_angle
+        hole_start = (self.base_angle + self.time * self.rotation_speed) % (2 * math.pi)
+        hole_end = (hole_start + self.hole_opening_angle) % (2 * math.pi)
+
+        if hole_start > hole_end:
+            return angle >= hole_start or angle <= hole_end
         else:
-            return self.hole_start_angle <= angle <= self.hole_end_angle
+            return hole_start <= angle <= hole_end
 
     def update(self, dt):
-        self.hole_start_angle = (self.hole_start_angle + self.rotation_speed) % (2 * math.pi)
-        self.hole_end_angle = (self.hole_end_angle + self.rotation_speed) % (2 * math.pi)
+        self.time += dt
 
-        if not self.broken:
-            self.radius -= self.shrink_speed * dt
-            if self.radius < 20:  # empêche qu’un cercle disparaisse totalement
-                self.radius = 20
+        if self.broken:
+            if not self.exploded:
+                self.exploded = True
+                self.flash_timer = 0.2
+                self.shockwave_radius = self.radius
+                self.shockwave_alpha = 255
+                for _ in range(30):
+                    self.sparks.append(Spark(self.pos))
 
+            for spark in self.sparks[:]:
+                spark.update(dt)
+                if spark.life <= 0:
+                    self.sparks.remove(spark)
+
+            if self.opacity > 0:
+                self.opacity -= self.fade_speed * dt
+                if self.opacity < 0:
+                    self.opacity = 0
+
+            if self.flash_timer > 0:
+                self.flash_timer -= dt
+
+            if self.shockwave_alpha > 0:
+                self.shockwave_radius += 300 * dt
+                self.shockwave_alpha -= 600 * dt
+                if self.shockwave_alpha < 0:
+                    self.shockwave_alpha = 0
+
+            return
+
+        # Réduction du rayon si autorisé
+        if not cercle_min_atteint:
+            if self.radius > 100:
+                self.radius -= 100 * dt
+            if self.radius < 100:
+                self.radius = 100
+
+    def draw(self, surface):
+        if self.opacity <= 0 and not self.sparks and self.shockwave_alpha <= 0:
+            return
+
+        # Particules
+        for spark in self.sparks:
+            spark.draw(surface)
+
+        # Cercle principal avec alpha
+        if self.opacity > 0:
+            color_with_alpha = (*self.color, int(self.opacity))
+            pygame.draw.circle(surface, color_with_alpha, (int(self.pos.x), int(self.pos.y)), int(self.radius), self.width)
+
+            # Dessin du trou
+            hole_start = (self.base_angle + self.time * self.rotation_speed) % (2 * math.pi)
+            hole_end = (hole_start + self.hole_opening_angle) % (2 * math.pi)
+
+            start_deg = math.degrees(hole_start)
+            end_deg = math.degrees(hole_end)
+            if end_deg < start_deg:
+                end_deg += 360
+
+            points = [self.pos]
+            for angle_deg in range(int(start_deg), int(end_deg) + 1):
+                angle_rad = math.radians(angle_deg % 360)
+                x = self.pos.x + self.radius * math.cos(angle_rad)
+                y = self.pos.y + self.radius * math.sin(angle_rad)
+                points.append(Vector2(x, y))
+
+            if len(points) >= 3:
+                pygame.draw.polygon(surface, (30, 30, 30), points)
+
+        # Flash blanc
+        if self.flash_timer > 0:
+            flash_alpha = int(255 * (self.flash_timer / 0.2))
+            flash_radius = self.radius + 10 * (1 - self.flash_timer / 0.2)
+            flash_color = (255, 255, 255, flash_alpha)
+            pygame.draw.circle(surface, flash_color, (int(self.pos.x), int(self.pos.y)), int(flash_radius))
+
+        # Onde de choc
+        if self.shockwave_alpha > 0:
+            shock_color = (255, 255, 255, int(self.shockwave_alpha))
+            pygame.draw.circle(
+                surface,
+                shock_color,
+                (int(self.pos.x), int(self.pos.y)),
+                int(self.shockwave_radius),
+                width=3
+            )
 
 
 class Balle:
@@ -227,18 +289,24 @@ class Balle:
 
 
 
-# Valeurs initiales
 nombre_cercles = 100
 rayon_depart = 300
-ecart_rayon = 20  # car 320 - 300 = 20 dans ton exemple
+ecart_rayon = 12  # + que l'épaisseur du cercle (width = 4)
+hole_opening = math.radians(60)  # ouverture de 30°
+rotation_speed = math.radians(20)
+angle_offset = hole_opening * 0.1  # pour effet spiralé mais aligné
+cercle_min_atteint = False
 
 
-# Création des cercles avec écart constant
+
 Cercles = []
 for i in range(nombre_cercles):
     rayon = rayon_depart + i * ecart_rayon
-    cercle = WallCercle(WIDTH // 2, HEIGHT // 2, rayon, "white", 4)
+    base_angle = i * angle_offset
+    cercle = WallCercle(WIDTH // 2, HEIGHT // 2, rayon, (255, 255, 255), 4, base_angle, rotation_speed, hole_opening)
     Cercles.append(cercle)
+
+
 
 
 
@@ -256,18 +324,23 @@ while running:
 
     screen.fill((30, 30, 30))
 
-    for Cercle in Cercles:
+    # Vérifie s'il existe AU MOINS UN cercle NON cassé qui est AU minimum
+    cercle_min_atteint = any(not c.broken and c.radius <= 225 for c in Cercles)
+
+
+    for Cercle in reversed(Cercles):
         Cercle.update(dt)
         if not Cercle.broken:
             Cercle.draw(screen)
 
+
     for i, b in enumerate(balles):
         b.update(dt)
         b.check_bounce_edges(WIDTH, HEIGHT)
-        for cercle in Cercles:
+        for cercle in Cercles:  # <- ici
             b.check_wall_cercle_collision(cercle)
         for autre in balles[i + 1:]:
-            b.check_circle_collision(autre)
+                b.check_circle_collision(autre)
         b.draw(screen)
 
     pygame.display.flip()

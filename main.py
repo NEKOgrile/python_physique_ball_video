@@ -166,7 +166,7 @@ class Balle:
                 overlap = distance + self.radius - cercle.radius
                 self.pos -= normal * overlap
 
-nombre_cercles = 100
+nombre_cercles = 1000  # toujours 1000 au total
 rayon_depart = 300
 ecart_rayon = 12
 hole_opening = math.radians(60)
@@ -175,11 +175,9 @@ angle_offset = hole_opening * 0.1
 cercle_min_atteint = False
 
 Cercles = []
-for i in range(nombre_cercles):
-    rayon = rayon_depart + i * ecart_rayon
-    base_angle = i * angle_offset
-    cercle = WallCercle(WIDTH // 2, HEIGHT // 2, rayon, (255, 255, 255), 4, base_angle, rotation_speed, hole_opening)
-    Cercles.append(cercle)
+i_cercle = 0  # index du prochain cercle à générer
+temps_depuis_dernier_cercle = 0
+intervalle_generation = 0.01  # en secondes (10ms entre chaque cercle)
 
 balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 4, 30, (200, 50, 50))
 balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 4, 30, (50, 50, 200))
@@ -192,13 +190,25 @@ while running:
         if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
             running = False
 
+    # Génération progressive des cercles
+    temps_depuis_dernier_cercle += dt
+    while temps_depuis_dernier_cercle >= intervalle_generation and i_cercle < nombre_cercles:
+        rayon = rayon_depart + i_cercle * ecart_rayon
+        if rayon >= 200:  # filtre ici (tu peux remettre 600 si tu veux plus de gain)
+            base_angle = i_cercle * angle_offset
+            cercle = WallCercle(WIDTH // 2, HEIGHT // 2, rayon, (255, 255, 255), 4, base_angle, rotation_speed, hole_opening)
+            Cercles.append(cercle)
+        i_cercle += 1
+        temps_depuis_dernier_cercle -= intervalle_generation
+
     screen.fill((30, 30, 30))
     cercle_min_atteint = any(not c.broken and c.radius <= 225 for c in Cercles)
 
     for Cercle in reversed(Cercles):
         Cercle.update(dt)
-        if not Cercle.broken:
+        if not Cercle.broken and Cercle.radius <= 1000:
             Cercle.draw(screen)
+
 
     for i, b in enumerate(balles):
         b.update(dt)
@@ -212,3 +222,4 @@ while running:
     pygame.display.flip()
 
 pygame.quit()
+

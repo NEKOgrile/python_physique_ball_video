@@ -6,7 +6,7 @@ import pygame.gfxdraw
 
 pygame.init()
 info = pygame.display.Info()
-WIDTH, HEIGHT = info.current_w, info.current_h
+WIDTH, HEIGHT = 1080 , 1920
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.NOFRAME)
 pygame.display.set_caption("Simulation de balle physique")
 clock = pygame.time.Clock()
@@ -67,10 +67,10 @@ class WallCercle:
             return
 
         if not cercle_min_atteint:
-            if self.radius > 100:
-                self.radius -= 100 * dt
-            if self.radius < 100:
-                self.radius = 100
+            if self.radius > 110:
+                self.radius -= 200 * dt # <-- ici la vitesse de fermeture (100)
+            if self.radius < 110:
+                self.radius = 110
 
     def draw(self, surface):
         if self.broken:
@@ -224,11 +224,13 @@ class Balle:
         if distance + self.radius > cercle.radius:
             if cercle.is_in_hole(self.pos):
                 cercle.broken = True
+                return True  # collision et cassé
             else:
                 normal = offset.normalize()
                 self.vel = self.vel.reflect(normal) * self.restitution
                 overlap = distance + self.radius - cercle.radius
                 self.pos -= normal * overlap
+        return False
 
 
 
@@ -240,14 +242,20 @@ hole_opening = math.radians(60)
 rotation_speed = math.radians(20)
 angle_offset = hole_opening * 0.1
 cercle_min_atteint = False
+voile_actif = False
+voile_couleur = (255, 0, 0)
+voile_timer = 0.0
+voile_duree = 0.2
+
+
 
 Cercles = []
 i_cercle = 0  # index du prochain cercle à générer
 temps_depuis_dernier_cercle = 0
-intervalle_generation = 0.01  # en secondes (10ms entre chaque cercle)
+intervalle_generation = 0.0001  # en secondes (10ms entre chaque cercle)
 
-balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 4, 30, (200, 50, 50))
-balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 4, 30, (50, 50, 200))
+balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 4, 20, (200, 50, 50))
+balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 4, 20, (50, 50, 200))
 balles = [balle1, balle2]
 
 running = True
@@ -269,7 +277,7 @@ while running:
         temps_depuis_dernier_cercle -= intervalle_generation
 
     screen.fill((30, 30, 30))
-    cercle_min_atteint = any(not c.broken and c.radius <= 225 for c in Cercles)
+    cercle_min_atteint = any(not c.broken and c.radius <= 110 for c in Cercles)
 
     for Cercle in reversed(Cercles):
         Cercle.update(dt)
@@ -281,10 +289,26 @@ while running:
         b.update(dt)
         b.check_bounce_edges(WIDTH, HEIGHT)
         for cercle in Cercles:
-            b.check_wall_cercle_collision(cercle)
+            if b.check_wall_cercle_collision(cercle):
+                voile_actif = True
+                voile_timer = voile_duree
+                voile_couleur = b.color
+
         for autre in balles[i + 1:]:
             b.check_circle_collision(autre)
         b.draw(screen)
+
+
+        if voile_actif:
+            voile_timer -= dt
+            if voile_timer > 0:
+                s = pygame.Surface((WIDTH, HEIGHT))
+                s.set_alpha(100)  # transparence (0 = invisible, 255 = opaque)
+                s.fill(voile_couleur)
+                screen.blit(s, (0, 0))
+            else:
+                voile_actif = False
+
 
     pygame.display.flip()
 

@@ -2,6 +2,7 @@ import pygame
 from pygame.math import Vector2
 import math
 import random
+import pygame.gfxdraw
 
 pygame.init()
 info = pygame.display.Info()
@@ -9,6 +10,30 @@ WIDTH, HEIGHT = info.current_w, info.current_h
 screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.NOFRAME)
 pygame.display.set_caption("Simulation de balle physique")
 clock = pygame.time.Clock()
+
+
+class Particle:
+    def __init__(self, pos, vel, color, lifetime, radius):
+        self.pos = Vector2(pos)
+        self.vel = Vector2(vel)
+        self.color = color
+        self.lifetime = lifetime
+        self.radius = radius
+
+    def update(self, dt):
+        self.pos += self.vel * dt
+        self.lifetime -= dt
+        self.radius = max(0, self.radius - dt * 10)  # Réduction progressive du rayon
+
+    def draw(self, surface):
+        if self.lifetime > 0:
+            alpha = max(0, int(255 * (self.lifetime / 1.0)))  # Opacité basée sur la durée de vie
+            s = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
+            pygame.draw.circle(s, (*self.color, alpha), (self.radius, self.radius), int(self.radius))
+            surface.blit(s, (self.pos.x - self.radius, self.pos.y - self.radius))
+
+
+
 
 class WallCercle:
     def __init__(self, x, y, radius, color, width, base_angle, rotation_speed, hole_opening_angle_rad):
@@ -83,10 +108,28 @@ class Balle:
         self.boost_duration = 0.2
         self.boost_elapsed = 0.0
         self.boost_speed_increase = 1.5
+        self.particles = []
+        self.positions = []  # ← AJOUTE CETTE LIGNE ICI
+        self.max_trail = 20  # ← et celle-ci si elle manque
 
     def draw(self, surface):
+        # Traînée néon
+        for i, pos in enumerate(self.positions):
+            alpha = int(255 * (1 - i / len(self.positions)))  # Opacité dégressive
+            radius = int(self.radius * (1 - i / len(self.positions)) * 1.2)  # Rayon plus petit avec le temps
+            if radius < 1: continue
+
+            trail_color = (*self.color, alpha)
+            s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+            pygame.gfxdraw.filled_circle(s, radius, radius, radius, trail_color)
+            surface.blit(s, (int(pos.x - radius), int(pos.y - radius)))
+
+        # Halo extérieur (blanc semi-transparent)
         pygame.draw.circle(surface, (255, 255, 255), (int(self.pos.x), int(self.pos.y)), self.radius + 6)
+
+        # Balle principale
         pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), self.radius)
+
 
     def update(self, dt):
         g = 500.0
@@ -107,6 +150,27 @@ class Balle:
             self.boost_timer -= dt
 
         self.pos += self.vel * boost_factor * dt
+
+        # Mise à jour de la traînée
+        self.positions.insert(0, Vector2(self.pos))
+        if len(self.positions) > self.max_trail:
+            self.positions.pop()
+
+
+        # Génération de particules
+        particle = Particle(
+            pos=self.pos,
+            vel=-self.vel * 0.1 + Vector2(random.uniform(-10, 10), random.uniform(-10, 10)),
+            color=self.color,
+            lifetime=0.5,
+            radius=self.radius / 2
+        )
+        self.particles.append(particle)
+
+        for p in self.particles[:]:
+            p.update(dt)
+            if p.lifetime <= 0:
+                self.particles.remove(p)
 
     def check_bounce_edges(self, width, height):
         if self.pos.x - self.radius < 0:
@@ -165,6 +229,9 @@ class Balle:
                 self.vel = self.vel.reflect(normal) * self.restitution
                 overlap = distance + self.radius - cercle.radius
                 self.pos -= normal * overlap
+
+
+
 
 nombre_cercles = 1000  # toujours 1000 au total
 rayon_depart = 300

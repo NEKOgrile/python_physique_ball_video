@@ -15,15 +15,15 @@ Ce projet utilise **Python** et **Pygame** pour simuler deux balles rebondissant
 ## 📁 Structure du projet
 
 ```bash
-├── arc_circle.py              `# Gestion des arcs circulaires et détection des collisions`
-├── balle.py                   `# Classe des balles (mouvement, rebond, collisions entre balles)`
-├── main.py                    `# Script principal exécutant la boucle de jeu`
-├── midi_manager.py            `# Gestionnaire de lecture de notes MIDI`
-├── test4.py                   `# Script de test ou d’expérimentation`
+├── arc_circle.py              # Gestion des arcs circulaires et détection des collisions
+├── balle.py                   # Classe des balles (mouvement, rebond, collisions entre balles)
+├── main.py                    # Script principal exécutant la boucle de jeu
+├── midi_manager.py            # Gestionnaire de lecture de notes MIDI
+├── test4.py                   # Script de test ou d’expérimentation
 ├── musique/
-│   └── I'm Blue.mid           `# Fichier MIDI utilisé pour jouer les notes`
-└── README.md                  `# Fichier explicatif du projet (celui-ci)`
-
+│   └── I m Blue.mid           # Fichier MIDI utilisé pour jouer les notes
+└── README.md                  # Fichier explicatif du projet (celui-ci)
+```
 ---
 
 ## 🧰 Prérequis
@@ -39,7 +39,7 @@ Ce projet utilise **Python** et **Pygame** pour simuler deux balles rebondissant
 
 ```bash
 pip install pygame mido python-rtmidi
-```bash
+```
 
 ---
 
@@ -51,7 +51,7 @@ pip install pygame mido python-rtmidi
 
 ```bash
 python main.py
-```bash
+```
 
 ---
 
@@ -71,7 +71,7 @@ python main.py
 - En cas d’erreur `AttributeError` sur `midi_manager`, assurez-vous de passer correctement l'objet à chaque arc :  
 ```bash
 ArcCircle(..., midi_manager=midi_manager)
-```bash
+```
 - Vérifiez également que la méthode appelée est `play_next()` et non `play_next_note()`.
 
 ---
@@ -104,6 +104,6 @@ __pycache__/
 *.pyc
 .venv/
 musique/*.mid
-```bash
+```
 
 ---

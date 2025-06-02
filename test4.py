@@ -278,8 +278,8 @@ for i in range(1000):
 
 yes_score = 0
 no_score = 0
-font_title = pygame.font.SysFont(None, 40)
-font_score = pygame.font.SysFont(None, 36)
+font_title = pygame.font.SysFont(None, 80)
+font_score = pygame.font.SysFont(None, 66)
 
 running = True
 while running:

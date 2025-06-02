@@ -1,421 +1,350 @@
 import pygame
-from pygame.math import Vector2
 import math
-import random
-import pygame.gfxdraw
+from pygame.math import Vector2
+import mido
+import pygame.midi
+import time
 
-pygame.init()
-pygame.font.init()  # Initialisation du module font
+# ========== CONFIGURATION ==========
+WIDTH, HEIGHT = 1080, 1080
+FPS = 60
+BG_COLOR = (20, 20, 30)
+WHITE = (255, 255, 255)
 
-# =============================
-# CONFIGURATION DE LA FENÊTRE
-# =============================
-WIDTH, HEIGHT = 1080, 1920
-screen = pygame.display.set_mode((WIDTH, HEIGHT), pygame.NOFRAME)
-pygame.display.set_caption("Simulation de balle physique")
-clock = pygame.time.Clock()
+# Couleurs
+BLUE  = (100, 150, 255)
+RED   = (255,  80,  80)
 
-# =============================
-# POLICES & COULEURS
-# =============================
-font_question = pygame.font.Font(None, 60)  # Police pour la question
-font_score    = pygame.font.Font(None, 72)  # Police pour le score
+# Arcs
+RAYON_DEPART      = 100
+ECART_RAYON       = 12
+OUVERTURE_DEGREES = 300
 
-COLOR_WHITE   = (255, 255, 255)
-COLOR_BLACK   = (  0,   0,   0)
-COLOR_RED     = (255,   0,   0)
-COLOR_BLUE    = (  0,   0, 255)
-COLOR_BG      = ( 30,  30,  30)  # fond général
+# Balle
+GRAVITY        = 500      # gravité (en px/s²)
+BALL_RADIUS    = 15
+RESTITUTION    = 1.0      # rebond parfaitement élastique
+MAX_SPEED      = 800      # vitesse maximale (en px/s)
+BOOST_FACTOR   = 1.5      # multiplicateur temporaire de vitesse
+BOOST_DURATION = 0.2      # durée du boost (en secondes)
+# Limitation de vitesse
 
-# =============================
-# TEXTE DE LA QUESTION
-# =============================
-question_text = "Are you dumb? (respectfully)"  # Remplacez par votre question
 
-# =============================
-# CLASSES (inchangées)
-# =============================
-class Particle:
-    def __init__(self, pos, vel, color, lifetime, radius):
-        self.pos = Vector2(pos)
-        self.vel = Vector2(vel)
-        self.color = color
-        self.lifetime = lifetime
+# ========== CLASSES ==========
+
+class ArcCircle:
+    def __init__(self, center, radius, start_angle, end_angle, color, width=4):
+        self.center = Vector2(center)
         self.radius = radius
-
-    def update(self, dt):
-        self.pos += self.vel * dt
-        self.lifetime -= dt
-        self.radius = max(0, self.radius - dt * 10)
-
-    def draw(self, surface):
-        if self.lifetime > 0:
-            alpha = max(0, int(255 * (self.lifetime / 1.0)))
-            s = pygame.Surface((self.radius * 2, self.radius * 2), pygame.SRCALPHA)
-            pygame.draw.circle(
-                s,
-                (*self.color, alpha),
-                (int(self.radius), int(self.radius)),
-                int(self.radius)
-            )
-            surface.blit(s, (self.pos.x - self.radius, self.pos.y - self.radius))
-
-
-class WallCercle:
-    def __init__(self, x, y, radius, color, width,
-                 base_angle, rotation_speed, hole_opening_angle_rad):
-        self.pos = Vector2(x, y)
-        self.radius = radius
+        self.start_angle = start_angle % (2 * math.pi)
+        self.end_angle   = end_angle   % (2 * math.pi)
         self.color = color
         self.width = width
         self.broken = False
-        self.base_angle = base_angle
-        self.rotation_speed = rotation_speed
-        self.hole_opening_angle = hole_opening_angle_rad
-        self.time = 0
+
+    def rotate(self, dt):
+        rotation_speed = math.radians(25)
+        self.start_angle = (self.start_angle - rotation_speed * dt) % (2 * math.pi)
+        self.end_angle   = (self.end_angle   - rotation_speed * dt) % (2 * math.pi)
+
+    def shrink(self, dt):
+        if not self.broken and self.radius > RAYON_DEPART:
+            self.radius -= 200 * dt
+            if self.radius < RAYON_DEPART:
+                self.radius = RAYON_DEPART
+
+    def draw(self, surface):
+        if self.broken or self.radius > 800:
+            return
+        rect = pygame.Rect(0, 0, self.radius * 2, self.radius * 2)
+        rect.center = (int(self.center.x), int(self.center.y))
+        pygame.draw.arc(surface, self.color, rect,
+                        self.start_angle, self.end_angle, self.width)
 
     def is_in_hole(self, pos):
-        vect = Vector2(pos) - self.pos
-        angle = math.atan2(vect.y, vect.x)
-        if angle < 0:
-            angle += 2 * math.pi
-
-        hole_start = (self.base_angle + self.time * self.rotation_speed) % (2 * math.pi)
-        hole_end   = (hole_start + self.hole_opening_angle) % (2 * math.pi)
-
-        if hole_start > hole_end:
-            return angle >= hole_start or angle <= hole_end
+        dx = pos.x - self.center.x
+        dy = self.center.y - pos.y
+        angle = math.atan2(dy, dx) % (2 * math.pi)
+        start = self.start_angle
+        end = self.end_angle
+        if start < end:
+            in_drawn = (start <= angle <= end)
         else:
-            return hole_start <= angle <= hole_end
+            in_drawn = (angle >= start or angle <= end)
+        return not in_drawn
 
-    def update(self, dt):
-        self.time += dt
+    def check_wall_cercle_collision(self, balle):
         if self.broken:
-            return
-        if not cercle_min_atteint:
-            if self.radius > 110:
-                self.radius -= 200 * dt
-            if self.radius < 110:
-                self.radius = 110
-
-    def draw(self, surface):
-        if self.broken:
-            return
-        pygame.draw.circle(
-            surface,
-            self.color,
-            (int(self.pos.x), int(self.pos.y)),
-            int(self.radius),
-            self.width
-        )
-        hole_start = (self.base_angle + self.time * self.rotation_speed) % (2 * math.pi)
-        hole_end   = (hole_start + self.hole_opening_angle) % (2 * math.pi)
-
-        start_deg = math.degrees(hole_start)
-        end_deg   = math.degrees(hole_end)
-        if end_deg < start_deg:
-            end_deg += 360
-
-        pts = [self.pos]
-        for angle_deg in range(int(start_deg), int(end_deg) + 1):
-            angle_rad = math.radians(angle_deg % 360)
-            x = self.pos.x + self.radius * math.cos(angle_rad)
-            y = self.pos.y + self.radius * math.sin(angle_rad)
-            pts.append(Vector2(x, y))
-
-        if len(pts) >= 3:
-            pygame.draw.polygon(surface, (30, 30, 30), pts)
-
-
-class Balle:
-    def __init__(self, x, y, radius, color):
-        self.pos = Vector2(x, y)
-        self.vel = Vector2(0, 0)
-        self.radius = radius
-        self.color = color
-        self.mass = radius
-        self.restitution = 1
-        self.boost_timer = 0
-        self.boost_duration = 0.2
-        self.boost_elapsed = 0.0
-        self.boost_speed_increase = 1.5
-        self.particles = []
-        self.positions = []
-        self.max_trail = 20
-        self.score = 0
-
-    def draw(self, surface):
-        for i, pos in enumerate(self.positions):
-            alpha = int(255 * (1 - i / len(self.positions)))
-            radius = int(self.radius * (1 - i / len(self.positions)) * 1.2)
-            if radius < 1:
-                continue
-            trail_color = (*self.color, alpha)
-            s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-            pygame.gfxdraw.filled_circle(s, radius, radius, radius, trail_color)
-            surface.blit(s, (int(pos.x - radius), int(pos.y - radius)))
-
-        pygame.draw.circle(
-            surface,
-            (255, 255, 255),
-            (int(self.pos.x), int(self.pos.y)),
-            self.radius + 6
-        )
-        pygame.draw.circle(
-            surface,
-            self.color,
-            (int(self.pos.x), int(self.pos.y)),
-            self.radius
-        )
-
-    def update(self, dt):
-        g = 500.0
-        self.vel.y += g * dt
-
-        boost_factor = 1.0
-        if self.boost_timer > 0:
-            self.boost_elapsed += dt
-            if self.boost_elapsed <= self.boost_duration:
-                boost_factor = self.boost_speed_increase
-            else:
-                time_after = self.boost_elapsed - self.boost_duration
-                if time_after <= 0.5:
-                    boost_factor = self.boost_speed_increase - (
-                        self.boost_speed_increase - 1
-                    ) * (time_after / 0.5)
-                else:
-                    self.boost_timer = 0
-                    self.boost_elapsed = 0
-            self.boost_timer -= dt
-
-        self.pos += self.vel * boost_factor * dt
-
-        self.positions.insert(0, Vector2(self.pos))
-        if len(self.positions) > self.max_trail:
-            self.positions.pop()
-
-        particle = Particle(
-            pos=self.pos,
-            vel=-self.vel * 0.1 + Vector2(random.uniform(-10, 10), random.uniform(-10, 10)),
-            color=self.color,
-            lifetime=0.5,
-            radius=self.radius / 2
-        )
-        self.particles.append(particle)
-        for p in self.particles[:]:
-            p.update(dt)
-            if p.lifetime <= 0:
-                self.particles.remove(p)
-
-    def check_bounce_edges(self, width, height):
-        if self.pos.x - self.radius < 0:
-            self.pos.x = self.radius
-            self.vel.x *= -self.restitution
-        elif self.pos.x + self.radius > width:
-            self.pos.x = width - self.radius
-            self.vel.x *= -self.restitution
-        if self.pos.y - self.radius < 0:
-            self.pos.y = self.radius
-            self.vel.y *= -self.restitution
-        elif self.pos.y + self.radius > height:
-            self.pos.y = height - self.radius
-            self.vel.y *= -self.restitution
-            if abs(self.vel.y) < 50:
-                self.vel.y = -50
-
-    def check_circle_collision(self, autre):
-        offset = self.pos - autre.pos
-        dist_sq = offset.length_squared()
-        rayon_min = self.radius + autre.radius
-        if dist_sq < rayon_min ** 2:
-            dist = max(offset.length(), 1e-8)
-            overlap = rayon_min - dist
-            correction = offset.normalize() * (overlap / 2)
-            self.pos += correction
-            autre.pos -= correction
-            normal = offset.normalize()
-            rel_vel = self.vel - autre.vel
-            vel_norm = rel_vel.dot(normal)
-            if vel_norm < 0:
-                impulse = (2 * vel_norm) / (self.mass + autre.mass)
-                self.vel -= impulse * autre.mass * normal
-                autre.vel += impulse * self.mass * normal
-                if self.boost_timer <= 0:
-                    self.boost_timer = 0.5
-                    self.boost_elapsed = 0
-                if autre.boost_timer <= 0:
-                    autre.boost_timer = 0.5
-                    autre.boost_elapsed = 0
-
-    def check_wall_cercle_collision(self, cercle):
-        if cercle.broken:
             return False
-        offset = self.pos - cercle.pos
+
+        offset = balle.pos - self.center
         distance = offset.length()
-        if distance + self.radius > cercle.radius:
-            if cercle.is_in_hole(self.pos):
-                cercle.broken = True
+
+        if distance + balle.radius > self.radius:
+            if self.is_in_hole(balle.pos):
+                self.broken = True
                 return True
             else:
                 normal = offset.normalize()
-                self.vel = self.vel.reflect(normal) * self.restitution
-                overlap = distance + self.radius - cercle.radius
-                self.pos -= normal * overlap
+                balle.vel = balle.vel.reflect(normal) * balle.restitution
+                overlap = (distance + balle.radius) - self.radius
+                balle.pos -= normal * overlap
+
+                # 🎵 Jouer une note MIDI si délai respecté
+                global note_index, last_note_time
+                now = pygame.time.get_ticks()
+                if now - last_note_time >= 100:
+                    if note_index < len(notes):
+                        note, velocity = notes[note_index]
+                        midi_out.note_on(note, velocity)
+                        note_index += 1
+                        last_note_time = now
+                    else:
+                        note_index = 0
+
         return False
 
+class Balle:
+    def __init__(self, x, y, radius, color):
+        self.pos    = Vector2(x, y)
+        self.vel    = Vector2(0, 0)     # vitesse “de base”, sans boost
+        self.radius = radius
+        self.color  = color
 
-# =============================
-# INITIALISATION DES OBJETS
-# =============================
-nombre_cercles = 1000
-rayon_depart = 300
-ecart_rayon = 12
-hole_opening = math.radians(60)
-rotation_speed = math.radians(20)
-angle_offset = hole_opening * 0.1
-cercle_min_atteint = False
-voile_actif = False
-voile_couleur = (255, 0, 0)
-voile_timer = 0.0
-voile_duree = 0.2
+        # Masse proportionnelle au rayon (pour la collision élastique)
+        self.mass       = radius
+        self.restitution = RESTITUTION  # = 1.0 → pas de perte d’énergie
 
-Cercles = []
-i_cercle = 0
-temps_depuis_dernier_cercle = 0
-intervalle_generation = 0.0001
+        # Pour gérer le boost :
+        self.is_boosting  = False       # à True pendant les 0,2 s du boost
+        self.boost_timer  = 0.0         # compte à rebours du boost (s)
+        self.can_boost    = True        # autorise un nouveau boost si True
 
-balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 4, 20, (200, 50, 50))
-balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 4, 20, (50, 50, 200))
+    def clamp_velocity(self):
+        """
+        Si la norme de self.vel dépasse MAX_SPEED, on la ramène à MAX_SPEED
+        (en conservant la direction).
+        """
+        speed = self.vel.length()
+        if speed > MAX_SPEED:
+            self.vel.scale_to_length(MAX_SPEED)
+
+    def draw(self, surface):
+        # Cercle blanc en arrière-plan, puis cercle coloré par-dessus
+        pygame.draw.circle(surface, (255, 255, 255),
+                           (int(self.pos.x), int(self.pos.y)),
+                           self.radius + 6)
+        pygame.draw.circle(surface, self.color,
+                           (int(self.pos.x), int(self.pos.y)),
+                           self.radius)
+
+    def update(self, dt):
+        # 1) Appliquer la gravité sur la vitesse “de base” (self.vel)
+        self.vel.y += GRAVITY * dt
+
+        # 2) Clamper self.vel pour ne jamais dépasser MAX_SPEED
+        self.clamp_velocity()
+
+        # 3) Déplacer la balle : on applique le “boost” en multipliant
+        #    seulement au moment du déplacement, PAS sur self.vel elle-même.
+        facteur = BOOST_FACTOR if self.is_boosting else 1.0
+        self.pos += self.vel * facteur * dt
+
+        # 4) Gestion du timer de boost :
+        if not self.can_boost:
+            self.boost_timer -= dt
+            if self.boost_timer <= 0:
+                # À la fin des 0,2 s, on repasse en mode “pas de boost”
+                self.boost_timer = 0.0
+                self.is_boosting = False
+                self.can_boost   = True
+
+    def check_bounce_edges(self, width, height):
+        # Rebond sur le bord gauche/droite
+        if self.pos.x - self.radius < 0:
+            self.pos.x = self.radius
+            self.vel.x *= -self.restitution
+            self.clamp_velocity()
+        elif self.pos.x + self.radius > width:
+            self.pos.x = width - self.radius
+            self.vel.x *= -self.restitution
+            self.clamp_velocity()
+
+        # Rebond sur le bord haut/bas
+        if self.pos.y - self.radius < 0:
+            self.pos.y = self.radius
+            self.vel.y *= -self.restitution
+            self.clamp_velocity()
+        elif self.pos.y + self.radius > height:
+            self.pos.y = height - self.radius
+            self.vel.y *= -self.restitution
+            self.clamp_velocity()
+
+    def check_circle_collision(self, autre):
+        """
+        Détection + résolution d’une collision parfaitement élastique avec une autre balle.
+        Si la collision est détectée et que self.can_boost est True, on active le boost
+        (i.e. self.is_boosting = True pendant 0,2 s), puis on bloque can_boost = False
+        jusqu’à la fin du timer.
+        """
+        offset  = self.pos - autre.pos
+        dist_sq = offset.length_squared()
+        rayon_min = self.radius + autre.radius
+
+        if dist_sq < rayon_min ** 2:
+            dist     = max(offset.length(), 1e-8)
+            overlap  = rayon_min - dist
+            normal   = offset.normalize()
+
+            # 1) On repousse les deux balles pour qu’elles ne se chevauchent pas
+            correction = normal * (overlap / 2)
+            self.pos  += correction
+            autre.pos -= correction
+
+            # 2) Calcul de l’impulsion élastique
+            rel_vel = self.vel - autre.vel
+            vel_norm = rel_vel.dot(normal)
+
+            if vel_norm < 0:
+                # Impulsion standard choc élastique 1D sur la normale
+                impulse = (2 * vel_norm) / (self.mass + autre.mass)
+                self.vel   -= impulse * autre.mass * normal
+                autre.vel  += impulse * self.mass     * normal
+
+                # On clamp les deux vitesses juste après l’impulsion
+                self.clamp_velocity()
+                autre.clamp_velocity()
+
+                # 3) Si self peut encore être boosté → on démarre le boost
+                if self.can_boost:
+                    self.is_boosting  = True
+                    self.can_boost    = False
+                    self.boost_timer  = BOOST_DURATION
+                    # Note : on n’applique PAS self.vel *= BOOST_FACTOR ici,
+                    #       car le multipliant ne sert qu’au moment du déplacement.
+
+                # 4) Même chose pour l’autre balle
+                if autre.can_boost:
+                    autre.is_boosting  = True
+                    autre.can_boost    = False
+                    autre.boost_timer  = BOOST_DURATION
+
+    def check_wall_cercle_collision(self, cercle):
+        """
+        Votre code existant pour gérer le rebond sur un arc de cercle
+        (ou la “cassure” si la balle tombe dans le trou).
+        """
+        return cercle.check_wall_cercle_collision(self)
+
+# ========== INITIALISATION PYGAME ==========
+pygame.init()
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Deux Balles + Arcs")
+clock = pygame.time.Clock()
+pygame.mixer.init()
+pygame.midi.init()
+midi_out = pygame.midi.Output(0)
+
+# Charger les notes du fichier MIDI
+mid = mido.MidiFile("I'm Blue.mid")
+notes = []
+for track in mid.tracks:
+    for msg in track:
+        if msg.type == 'note_on' and msg.velocity > 0:
+            notes.append((msg.note, msg.velocity))
+
+note_index = 0
+last_note_time = 0  # en millisecondes
+
+# Initialisation des balles
+center = (WIDTH // 2, HEIGHT // 2)
+balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 2, BALL_RADIUS, RED)
+balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 2, BALL_RADIUS, BLUE)
+balle1.vel = Vector2(400/1.5, -500/1.5)   # norme ≈ 640 px/s
+balle2.vel = Vector2(-400/1.5, -400/1.5)  # norme ≈ 565 px/s
+#balle1.vel = Vector2(150, -200)
+#balle2.vel = Vector2(-150, -150)
 balles = [balle1, balle2]
+
+# Création des arcs
+arcs = []
+for i in range(1000):
+    start_deg = i * -5
+    radius = RAYON_DEPART + i * ECART_RAYON
+    start_rad = math.radians(start_deg)
+    end_rad = math.radians(start_deg + OUVERTURE_DEGREES)
+    color = [BLUE, RED, WHITE][i % 3]
+    arcs.append(ArcCircle(center, radius, start_rad, end_rad, color))
+
+yes_score = 0
+no_score = 0
+font_title = pygame.font.SysFont(None, 40)
+font_score = pygame.font.SysFont(None, 36)
 
 running = True
 while running:
-    dt = clock.tick(60) / 1000.0
+    dt = clock.tick(FPS) / 1000.0
+
     for event in pygame.event.get():
-        if event.type == pygame.QUIT or (event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE):
+        if event.type == pygame.QUIT or (
+           event.type == pygame.KEYUP and event.key == pygame.K_ESCAPE
+        ):
             running = False
 
-    # Génération progressive des cercles
-    temps_depuis_dernier_cercle += dt
-    while temps_depuis_dernier_cercle >= intervalle_generation and i_cercle < nombre_cercles:
-        rayon = rayon_depart + i_cercle * ecart_rayon
-        if rayon >= 200:
-            base_angle = i_cercle * angle_offset
-            cercle = WallCercle(
-                WIDTH // 2,
-                HEIGHT // 2,
-                rayon,
-                (255, 255, 255),
-                4,
-                base_angle,
-                rotation_speed,
-                hole_opening
-            )
-            Cercles.append(cercle)
-        i_cercle += 1
-        temps_depuis_dernier_cercle -= intervalle_generation
-
-    # 1) On remplit le fond
-    screen.fill(COLOR_BG)
-
-    # 2) Mise à jour & dessin des cercles
-    cercle_min_atteint = any(not c.broken and c.radius <= 110 for c in Cercles)
-    for Cercle in reversed(Cercles):
-        Cercle.update(dt)
-        if not Cercle.broken and Cercle.radius <= 1000:
-            Cercle.draw(screen)
-
-    # 3) Mise à jour & dessin des balles (avec collisions)
-    for i, b in enumerate(balles):
+    # —————— Mise à jour des balles ——————
+    for b in balles:
         b.update(dt)
         b.check_bounce_edges(WIDTH, HEIGHT)
-        for cercle in Cercles:
-            if b.check_wall_cercle_collision(cercle):
-                b.score += 1
-                voile_actif = True
-                voile_timer = voile_duree
-                voile_couleur = b.color
-        for autre in balles[i + 1:]:
-            b.check_circle_collision(autre)
+        # Collision avec chaque arc
+        for arc in arcs:
+            if b.check_wall_cercle_collision(arc):
+                if b.color == BLUE:
+                    yes_score += 1
+                else:
+                    no_score += 1
+
+    # Collision entre les deux balles
+    balles[0].check_circle_collision(balles[1])
+
+    # —————— Rotation et rétrécissement des arcs ——————
+    for arc in arcs:
+        arc.rotate(dt)
+
+    any_at_min = any((not arc.broken and arc.radius <= RAYON_DEPART) for arc in arcs)
+    if not any_at_min:
+        for arc in arcs:
+            arc.shrink(dt)
+
+    # —————— Dessin ——————
+    screen.fill(BG_COLOR)
+    for arc in arcs:
+        arc.draw(screen)
+    for b in balles:
         b.draw(screen)
-        if voile_actif:
-            voile_timer -= dt
-            if voile_timer > 0:
-                s = pygame.Surface((WIDTH, HEIGHT))
-                s.set_alpha(100)
-                s.fill(voile_couleur)
-                screen.blit(s, (0, 0))
-            else:
-                voile_actif = False
 
-    # =============================
-    # 4) AFFICHAGE DE LA QUESTION AU-DESSUS
-    # =============================
-    question_surf = font_question.render(question_text, True, COLOR_BLACK)
-    # Calcul de la position : centré horizontalement, un peu au-dessus du centre vertical
-    q_x = WIDTH // 2 - question_surf.get_width() // 2
-    # On place la question au-dessus de la boîte de score. On calculera la boîte de score ci-dessous.
-    # Placeholder vertical : nous laissons 200 px au-dessus du centre.
-    q_y = HEIGHT // 2 -500  
-    # Fond blanc semi-transparent derrière la question (avec coins arrondis)
-    box_q = pygame.Rect(
-        q_x - 20, q_y - 10,
-        question_surf.get_width() + 40,
-        question_surf.get_height() + 20
-    )
-    pygame.draw.rect(screen, COLOR_WHITE, box_q, border_radius=12)
-    screen.blit(question_surf, (q_x, q_y))
+    # Titre (centré plus bas)
+    title_text = "Are you dumb? (respectfully)"
+    title_surf = font_title.render(title_text, True, (255, 255, 255))
+    title_rect = title_surf.get_rect(center=(screen.get_width() // 2, 200))
+    pygame.draw.rect(screen, (0, 0, 0), title_rect.inflate(20, 10))
+    screen.blit(title_surf, title_rect)
 
-    # =============================
-    # 5) AFFICHAGE DU SCORE AU CENTRE
-    # =============================
-    # Rendu des textes “Yes” et “No”
-    oui_text = font_score.render(f"Yes : {balle2.score}", True, COLOR_BLUE)
-    non_text = font_score.render(f"No : {balle1.score}", True, COLOR_RED)
+    # Score Yes (dessous à gauche)
+    yes_text_str = f"Yes : {yes_score}"
+    yes_surf = font_score.render(yes_text_str, True, (0, 255, 0))
+    yes_rect = yes_surf.get_rect(center=(screen.get_width() // 2 - 120, 260))
+    pygame.draw.rect(screen, (0, 0, 0), yes_rect.inflate(20, 10))
+    screen.blit(yes_surf, yes_rect)
 
-    # Marges intérieures
-    padding_h = 40
-    padding_v = 20
-    separator_width = 8
+    # Score No (dessous à droite)
+    no_text_str = f"No : {no_score}"
+    no_surf = font_score.render(no_text_str, True, (255, 0, 0))
+    no_rect = no_surf.get_rect(center=(screen.get_width() // 2 + 120, 260))
+    pygame.draw.rect(screen, (0, 0, 0), no_rect.inflate(20, 10))
+    screen.blit(no_surf, no_rect)
 
-    total_width = (
-        oui_text.get_width() +
-        non_text.get_width() +
-        separator_width +
-        (padding_h * 3)
-    )
-    total_height = max(oui_text.get_height(), non_text.get_height()) + (padding_v * 2)
 
-    rect_x = WIDTH // 2 - total_width // 2
-    rect_y = HEIGHT // 2 - total_height -350
-
-    # Fond blanc arrondi
-    rect = pygame.Rect(rect_x, rect_y, total_width, total_height)
-    pygame.draw.rect(screen, COLOR_WHITE, rect, border_radius=12)
-
-    # Barre séparatrice noire
-    sep_x = rect_x + padding_h + oui_text.get_width() + padding_h // 2
-    pygame.draw.line(
-        screen,
-        COLOR_BLACK,
-        (sep_x, rect_y + padding_v // 2),
-        (sep_x, rect_y + total_height - padding_v // 2),
-        separator_width
-    )
-
-    # Texte “Yes”
-    oui_x = rect_x + padding_h
-    oui_y = rect_y + (total_height // 2 - oui_text.get_height() // 2)
-    screen.blit(oui_text, (oui_x, oui_y))
-
-    # Texte “No”
-    non_x = sep_x + (separator_width // 2) + padding_h // 2
-    non_y = rect_y + (total_height // 2 - non_text.get_height() // 2)
-    screen.blit(non_text, (non_x, non_y))
-
-    # =============================
-    # 6) MISE À JOUR DE L’ÉCRAN
-    # =============================
     pygame.display.flip()
 
+pygame.midi.quit()
 pygame.quit()

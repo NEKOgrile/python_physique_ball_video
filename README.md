@@ -14,7 +14,7 @@ Ce projet utilise **Python** et **Pygame** pour simuler deux balles rebondissant
 
 ## 📁 Structure du projet
 
-`dash`
+```bash
 ├── arc_circle.py              `# Gestion des arcs circulaires et détection des collisions`
 ├── balle.py                   `# Classe des balles (mouvement, rebond, collisions entre balles)`
 ├── main.py                    `# Script principal exécutant la boucle de jeu`
@@ -37,9 +37,9 @@ Ce projet utilise **Python** et **Pygame** pour simuler deux balles rebondissant
 
 ### ✅ Installation
 
-`dash`
+```bash
 pip install pygame mido python-rtmidi
-`dash`
+```bash
 
 ---
 
@@ -49,9 +49,9 @@ pip install pygame mido python-rtmidi
 2. Placez votre fichier MIDI dans le dossier `musique/` (ou utilisez `I'm Blue.mid` fourni).
 3. Lancez le programme principal :
 
-`dash`
+```bash
 python main.py
-`dash`
+```bash
 
 ---
 
@@ -69,9 +69,9 @@ python main.py
 
 - Le fichier `test4.py` permet de tester certaines fonctionnalités (ex : mouvement de balle ou notes).
 - En cas d’erreur `AttributeError` sur `midi_manager`, assurez-vous de passer correctement l'objet à chaque arc :  
-`dash`
+```bash
 ArcCircle(..., midi_manager=midi_manager)
-`dash`
+```bash
 - Vérifiez également que la méthode appelée est `play_next()` et non `play_next_note()`.
 
 ---
@@ -99,11 +99,11 @@ Le projet est librement partageable — toute contribution est la bienvenue !
 
 Voici un `.gitignore` minimal :
 
-`dash`
+```bash
 __pycache__/
 *.pyc
 .venv/
 musique/*.mid
-`dash`
+```bash
 
 ---

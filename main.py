@@ -64,8 +64,8 @@ for i in range(1000):
 
 yes_score = 0
 no_score = 0
-font_title = pygame.font.SysFont(None, 80)
-font_score = pygame.font.SysFont(None, 66)
+font_title = pygame.font.SysFont(None, 46)
+font_score = pygame.font.SysFont(None, 46)
 font_timer = pygame.font.SysFont(None, 50)
 
 
@@ -260,17 +260,17 @@ while running:
 
 
     title_surf = font_title.render("Are you GAY? (respectfully)", True, (255, 255, 255))
-    title_rect = title_surf.get_rect(center=(WIDTH // 2, 200))
+    title_rect = title_surf.get_rect(center=(WIDTH // 2, 250))
     pygame.draw.rect(screen, (0, 0, 0), title_rect.inflate(20, 10))
     screen.blit(title_surf, title_rect)
 
     yes_surf = font_score.render(f"Yes : {yes_score}", True, (0, 255, 0))
-    yes_rect = yes_surf.get_rect(center=(WIDTH // 2 - 120, 260))
+    yes_rect = yes_surf.get_rect(center=(WIDTH // 2 - 120, 300))
     pygame.draw.rect(screen, (0, 0, 0), yes_rect.inflate(20, 10))
     screen.blit(yes_surf, yes_rect)
 
     no_surf = font_score.render(f"No : {no_score}", True, (255, 0, 0))
-    no_rect = no_surf.get_rect(center=(WIDTH // 2 + 120, 260))
+    no_rect = no_surf.get_rect(center=(WIDTH // 2 + 120, 300))
     pygame.draw.rect(screen, (0, 0, 0), no_rect.inflate(20, 10))
     screen.blit(no_surf, no_rect)
 

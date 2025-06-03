@@ -66,15 +66,34 @@ font_score = pygame.font.SysFont(None, 66)
 font_timer = pygame.font.SysFont(None, 50)
 
 # Initialiser le timer à 61 secondes (1 min 01 sec)
-timer = 61.0
+timer = 10.0
 
-# --- Gestion des états de jeu ---
+# --- États de jeu ---
+# "play" → jusqu'à ce que timer = 0
+# "explode_arcs" → 1 s d'agrandissement progressif des arcs
+# "align_balls" → 0,5 s pour :
+#    • aligner verticalement, 
+#    • repositionner horizontalement à une certaine distance,
+#    • faire grossir les balles en même temps
+# "balls_aligned" → état final (pour la suite)
 game_state = "play"
 explosion_timer = 0.0
 
-# Pour stocker, lors du début de l'explosion, le radius et width initiaux
-orig_radii = []
+# Pour stocker les radius et width initiaux des arcs au moment de l'explosion
+orig_radii  = []
 orig_widths = []
+
+# Variables pour l'animation d'alignement (align_balls)
+align_duration = 1.0      # durée en secondes pour aligner/grossir/répartir les balles
+align_timer    = 0.0
+
+# Yeux pour mémoriser les positions/tailles de départ, et cibles
+y_init1 = y_init2 = target_y = None
+x_init1 = x_init2 = target_x1 = target_x2 = None
+radius_init1 = radius_init2 = target_radius = None
+
+# Séparation horizontale souhaitée (en px) entre les deux balles, une fois alignées :
+separation = 300
 
 running = True
 while running:
@@ -93,15 +112,15 @@ while running:
         timer -= dt
         if timer <= 0:
             timer = 0
-            # On passe en phase d'explosion
+            # Passer à l'explosion des arcs
             game_state = "explode_arcs"
-            explosion_timer = 1.0  # durée de l'explosion en secondes
+            explosion_timer = 1.0  # 1 s pour exploser
 
-            # On stocke les radius et width actuels de chaque arc
+            # Stocker radius et width initiaux de chaque arc
             orig_radii  = [arc.radius for arc in arcs]
             orig_widths = [arc.width  for arc in arcs]
 
-        # 2) Tant que timer > 0, on continue la mise à jour habituelle
+        # 2) Tant que timer > 0, mise à jour “normale”
         if game_state == "play":
             # Mise à jour des balles
             for b in balles:
@@ -116,10 +135,10 @@ while running:
                         else:
                             no_score += 1
 
-            # Collision entre les deux balles
+            # Collision entre les balles
             balles[0].check_circle_collision(balles[1])
 
-            # Rotation et rétrécissement des arcs
+            # Rotation + rétrécissement des arcs
             for arc in arcs:
                 arc.rotate(dt)
             any_at_min = any((not arc.broken and arc.radius <= RAYON_DEPART) for arc in arcs)
@@ -133,44 +152,89 @@ while running:
         if explosion_timer < 0:
             explosion_timer = 0
 
-        # 2) Calculer le coefficient d'interpolation (0 → 1 en 1s)
+        # 2) Calculer coef d'interpolation (0→1 en 1 s)
         coef = 1.0 - (explosion_timer / 1.0)
 
-        # 3) Pour chaque arc, agrandir radius et width depuis l'état initial
+        # 3) Agrandir peu à peu chaque arc depuis orig_radii vers 6× (exemple)
         for idx, arc in enumerate(arcs):
-            # new_radius passe de orig_radii[idx] → orig_radii[idx] * 4 (exemple 4×)
-            arc.radius = orig_radii[idx] * (1 + 5 * coef)
-            # new_width passe de orig_widths[idx] → orig_widths[idx] + 10
-            arc.width  = orig_widths[idx] + int(10 * coef)
+            arc.radius = orig_radii[idx] * (1 + 5 * coef)   # 1→6×
+            arc.width  = orig_widths[idx] + int(20 * coef)  # on passe à +20 px d'épaisseur
 
-        # 4) Quand explosion_timer atteint 0, on supprime enfin les arcs
+        # 4) Quand explosion terminée, préparer l'alignement des balles
         if explosion_timer <= 0:
-            arcs.clear()
-            game_state = "after_explosion"
+            game_state = "align_balls"
+            align_timer = align_duration   # 0,5 s
 
-    elif game_state == "after_explosion":
-        # Pour l'instant : rien d'autre, on laissera ici la suite (alignement, etc.)
+            # Y départ et Y cible
+            y_init1 = balle1.pos.y
+            y_init2 = balle2.pos.y
+            target_y = min(y_init1, y_init2)
+
+            # X départ et X cible :
+            x_init1 = balle1.pos.x
+            x_init2 = balle2.pos.x
+            # On veut les deux balles centrées autour de WIDTH//2, espacées de `separation`
+            target_x1 = (WIDTH // 2) + separation / 2
+            target_x2 = (WIDTH // 2) - separation / 2
+
+            # Rayon départ et rayon cible (ex. on veut qu'elles passent de 15→50 px)
+            radius_init1 = balle1.radius
+            radius_init2 = balle2.radius
+            target_radius = 50
+
+    elif game_state == "align_balls":
+        # 1) Décrémenter align_timer
+        align_timer -= dt
+        if align_timer < 0:
+            align_timer = 0
+
+        # 2) Calculer t entre 0 et 1 : 0 au départ, 1 à la fin
+        t = 1.0 - (align_timer / align_duration)  # passe de 0→1
+
+        # 3) Interpoler la position Y de chaque balle
+        balle1.pos.y = y_init1 + (target_y - y_init1) * t
+        balle2.pos.y = y_init2 + (target_y - y_init2) * t
+
+        # 4) Interpoler la position X de chaque balle
+        balle1.pos.x = x_init1 + (target_x1 - x_init1) * t
+        balle2.pos.x = x_init2 + (target_x2 - x_init2) * t
+
+        # 5) Faire croître les rayons
+        balle1.radius = radius_init1 + (target_radius - radius_init1) * t
+        balle2.radius = radius_init2 + (target_radius - radius_init2) * t
+
+        # 6) Mettre la vélocité à zéro pour que les balles restent figées
+        balle1.vel = Vector2(0, 0)
+        balle2.vel = Vector2(0, 0)
+
+        # 7) Quand tout est terminé, passer à l'état “balls_aligned”
+        if align_timer <= 0:
+            game_state = "balls_aligned"
+
+    elif game_state == "balls_aligned":
+        # Ici, les balles sont à la même hauteur, espacées de `separation` et ont grandi.
+        # On peut lancer la phase suivante (décompte du score, etc.).
         pass
 
     # ========== DESSIN (toujours exécuté) ==========
     screen.fill(BG_COLOR)
 
-    # 1) Dessiner les arcs (ou rien si la liste est vide)
+    # 1) Dessiner les arcs (s'ils sont encore dans la liste)
     for arc in arcs:
         arc.draw(screen)
 
-    # 2) Dessiner les balles (même si elles sont figées pendant l'explosion)
+    # 2) Dessiner les balles (en mouvement ou alignées)
     for b in balles:
         b.draw(screen)
 
-    # 3) Afficher le titre
+    # 3) Titre
     title_text = "Are you dumb? (respectfully)"
     title_surf = font_title.render(title_text, True, (255, 255, 255))
     title_rect = title_surf.get_rect(center=(WIDTH // 2, 200))
     pygame.draw.rect(screen, (0, 0, 0), title_rect.inflate(20, 10))
     screen.blit(title_surf, title_rect)
 
-    # 4) Afficher les scores
+    # 4) Scores Yes / No
     yes_text_str = f"Yes : {yes_score}"
     yes_surf = font_score.render(yes_text_str, True, (0, 255, 0))
     yes_rect = yes_surf.get_rect(center=(WIDTH // 2 - 120, 260))

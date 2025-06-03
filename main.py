@@ -87,6 +87,8 @@ grow_init1 = grow_init2 = None
 grow_target1 = grow_target2 = None
 winner = None
 loser = None
+center_move_timer = 1.0
+center_move_duration = 1.0
 
 running = True
 while running:
@@ -192,14 +194,26 @@ while running:
         balle1.radius = grow_init1 + (grow_target1 - grow_init1) * t
         balle2.radius = grow_init2 + (grow_target2 - grow_init2) * t
 
-        balle1.vel = Vector2(0, 0)
-        balle2.vel = Vector2(0, 0)
-
         if score_timer <= 0:
             yes_score = 0
             no_score = 0
             winner = balle1 if grow_target1 > grow_target2 else balle2
             loser = balle2 if winner is balle1 else balle1
+            game_state = "center_winner"
+            center_move_timer = center_move_duration
+
+    elif game_state == "center_winner":
+        center_move_timer -= dt
+        if center_move_timer < 0:
+            center_move_timer = 0
+
+        t = 1.0 - (center_move_timer / center_move_duration)
+
+        loser.radius = loser.radius * (1 - t)  # shrink loser
+        winner.pos.x += (WIDTH // 2 - winner.pos.x) * t
+        winner.pos.y += (HEIGHT // 2 - winner.pos.y) * t
+
+        if center_move_timer <= 0:
             game_state = "grow_finished"
 
     elif game_state == "grow_finished":
@@ -211,7 +225,8 @@ while running:
         arc.draw(screen)
 
     for b in balles:
-        b.draw(screen)
+        if b.radius > 1:
+            b.draw(screen)
 
     title_surf = font_title.render("Are you dumb? (respectfully)", True, (255, 255, 255))
     title_rect = title_surf.get_rect(center=(WIDTH // 2, 200))

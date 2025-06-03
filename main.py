@@ -16,6 +16,8 @@ WHITE = (255, 255, 255)
 # Couleurs
 BLUE  = (100, 150, 255)
 RED   = (255,  80,  80)
+GREEN  = (0, 255, 0)  # Vert, même que le score YES
+
 
 # Arcs
 RAYON_DEPART      = 100
@@ -45,7 +47,7 @@ midi_manager = MidiManager("musique/I'm Blue.mid")
 # Initialisation des balles
 center = (WIDTH // 2, HEIGHT // 2)
 balle1 = Balle(WIDTH // 2 - 100, HEIGHT // 2, BALL_RADIUS, RED)
-balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 2, BALL_RADIUS, BLUE)
+balle2 = Balle(WIDTH // 2 + 100, HEIGHT // 2, BALL_RADIUS, GREEN)
 balle1.vel = Vector2(400/1.5, -500/1.5)
 balle2.vel = Vector2(-400/1.5, -400/1.5)
 balles = [balle1, balle2]
@@ -66,7 +68,13 @@ font_title = pygame.font.SysFont(None, 80)
 font_score = pygame.font.SysFont(None, 66)
 font_timer = pygame.font.SysFont(None, 50)
 
+
 timer = 61.0
+
+
+winner_font_timer = 0.0
+winner_font_duration = 2.0
+winner_font_max_size = 120
 
 game_state = "play"
 explosion_timer = 0.0
@@ -113,7 +121,7 @@ while running:
                 b.check_bounce_edges(WIDTH, HEIGHT)
                 for arc in arcs:
                     if arc.check_wall_cercle_collision(b):
-                        if b.color == BLUE:
+                        if b.color == GREEN:
                             yes_score += 1
                         else:
                             no_score += 1
@@ -201,7 +209,7 @@ while running:
             loser = balle2 if winner is balle1 else balle1
             game_state = "center_winner"
             center_move_timer = center_move_duration
-
+        
     elif game_state == "center_winner":
         center_move_timer -= dt
         if center_move_timer < 0:
@@ -214,10 +222,17 @@ while running:
         winner.pos.y += (HEIGHT // 2 - winner.pos.y) * t
 
         if center_move_timer <= 0:
-            game_state = "grow_finished"
+            winner_font_timer = winner_font_duration
+            game_state = "done"
+
 
     elif game_state == "grow_finished":
         pass
+
+    elif game_state == "done":
+        if winner_font_timer > 0:
+            winner_font_timer -= dt
+
 
     screen.fill(BG_COLOR)
 
@@ -227,6 +242,22 @@ while running:
     for b in balles:
         if b.radius > 1:
             b.draw(screen)
+
+            # Choix du label
+            label = "YES" if b.color == GREEN else "NO"
+            
+            # Taille du texte proportionnelle à la taille de la balle
+            font_size = int(b.radius * 0.9)  # Ajuste le facteur si besoin
+            font_label = pygame.font.SysFont(None, font_size)
+            
+            # Création de la surface texte
+            label_surf = font_label.render(label, True, (255, 255, 255))
+            label_rect = label_surf.get_rect(center=(int(b.pos.x), int(b.pos.y)))
+            
+            # Dessin du texte centré sur la balle
+            screen.blit(label_surf, label_rect)
+
+
 
     title_surf = font_title.render("Are you dumb? (respectfully)", True, (255, 255, 255))
     title_rect = title_surf.get_rect(center=(WIDTH // 2, 200))
@@ -249,6 +280,17 @@ while running:
     timer_rect = timer_surf.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 300))
     pygame.draw.rect(screen, (0, 0, 0), timer_rect.inflate(20, 10))
     screen.blit(timer_surf, timer_rect)
+
+     # Affichage "Winner!" animé
+    if game_state == "done" and winner_font_timer > 0:
+        t = 1.0 - (winner_font_timer / winner_font_duration)
+        font_size = int(20 + t * (winner_font_max_size - 20))
+        winner_font = pygame.font.SysFont(None, font_size)
+        winner_surf = winner_font.render("Winner!", True, (255, 255, 0))
+        winner_rect = winner_surf.get_rect(center=(WIDTH // 2, HEIGHT // 2 - 100))
+        screen.blit(winner_surf, winner_rect)
+
+
 
     pygame.display.flip()
 

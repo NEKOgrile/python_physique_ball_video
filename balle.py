@@ -45,7 +45,7 @@ class Balle:
         # Cercle blanc en arrière-plan, puis cercle coloré par-dessus
         pygame.draw.circle(surface, (255, 255, 255),
                            (int(self.pos.x), int(self.pos.y)),
-                           self.radius + 6)
+                           self.radius + 4)
         pygame.draw.circle(surface, self.color,
                            (int(self.pos.x), int(self.pos.y)),
                            self.radius)

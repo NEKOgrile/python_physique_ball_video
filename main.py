@@ -259,7 +259,7 @@ while running:
 
 
 
-    title_surf = font_title.render("Are you dumb? (respectfully)", True, (255, 255, 255))
+    title_surf = font_title.render("Are you GAY? (respectfully)", True, (255, 255, 255))
     title_rect = title_surf.get_rect(center=(WIDTH // 2, 200))
     pygame.draw.rect(screen, (0, 0, 0), title_rect.inflate(20, 10))
     screen.blit(title_surf, title_rect)

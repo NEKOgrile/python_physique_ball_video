@@ -6,99 +6,110 @@ from pygame.math import Vector2
 BLUE  = (100, 150, 255)
 RED   = (255,  80,  80)
 
-
 # Balle
-GRAVITY        = 500      # gravité (en px/s²)
+GRAVITY        = 500
 BALL_RADIUS    = 15
-RESTITUTION    = 1.0      # rebond parfaitement élastique
-MAX_SPEED      = 800      # vitesse maximale (en px/s)
-BOOST_FACTOR   = 1.5      # multiplicateur temporaire de vitesse
-BOOST_DURATION = 0.2      # durée du boost (en secondes)
-# Limitation de vitesse
+RESTITUTION    = 1.0
+MAX_SPEED      = 800
+BOOST_FACTOR   = 1.5
+BOOST_DURATION = 0.2
 
 class Balle:
     def __init__(self, x, y, radius, color):
         self.pos    = Vector2(x, y)
-        self.vel    = Vector2(0, 0)     # vitesse “de base”, sans boost
+        self.vel    = Vector2(0, 0)
         self.radius = radius
         self.color  = color
 
-        # Masse proportionnelle au rayon (pour la collision élastique)
-        self.mass       = radius
-        self.restitution = RESTITUTION  # = 1.0 → pas de perte d’énergie
+        self.mass        = radius
+        self.restitution = RESTITUTION
 
-        # Pour gérer le boost :
-        self.is_boosting  = False       # à True pendant les 0,2 s du boost
-        self.boost_timer  = 0.0         # compte à rebours du boost (s)
-        self.can_boost    = True        # autorise un nouveau boost si True
+        self.is_boosting = False
+        self.boost_timer = 0.0
+        self.can_boost   = True
+
+        # Squash and stretch
+        self.scale          = Vector2(1, 1)
+        self.target_scale   = Vector2(1, 1)
+        self.scale_timer    = 0.0
+        self.scale_duration = 0.2
 
     def clamp_velocity(self):
-        """
-        Si la norme de self.vel dépasse MAX_SPEED, on la ramène à MAX_SPEED
-        (en conservant la direction).
-        """
         speed = self.vel.length()
         if speed > MAX_SPEED:
             self.vel.scale_to_length(MAX_SPEED)
 
     def draw(self, surface):
-        # Cercle blanc en arrière-plan, puis cercle coloré par-dessus
-        pygame.draw.circle(surface, (255, 255, 255),
-                           (int(self.pos.x), int(self.pos.y)),
-                           self.radius + 4)
-        pygame.draw.circle(surface, self.color,
-                           (int(self.pos.x), int(self.pos.y)),
-                           self.radius)
+        scaled_radius_x = int(self.radius * self.scale.x)
+        scaled_radius_y = int(self.radius * self.scale.y)
+
+        # Fond blanc (halo)
+        pygame.draw.ellipse(surface, (255, 255, 255),
+            pygame.Rect(0, 0, scaled_radius_x * 2 + 8, scaled_radius_y * 2 + 8).move(
+                self.pos.x - scaled_radius_x - 4, self.pos.y - scaled_radius_y - 4)
+        )
+
+        # Balle colorée
+        pygame.draw.ellipse(surface, self.color,
+            pygame.Rect(0, 0, scaled_radius_x * 2, scaled_radius_y * 2).move(
+                self.pos.x - scaled_radius_x, self.pos.y - scaled_radius_y)
+        )
 
     def update(self, dt):
-        # 1) Appliquer la gravité sur la vitesse “de base” (self.vel)
         self.vel.y += GRAVITY * dt
-
-        # 2) Clamper self.vel pour ne jamais dépasser MAX_SPEED
         self.clamp_velocity()
 
-        # 3) Déplacer la balle : on applique le “boost” en multipliant
-        #    seulement au moment du déplacement, PAS sur self.vel elle-même.
         facteur = BOOST_FACTOR if self.is_boosting else 1.0
         self.pos += self.vel * facteur * dt
 
-        # 4) Gestion du timer de boost :
         if not self.can_boost:
             self.boost_timer -= dt
             if self.boost_timer <= 0:
-                # À la fin des 0,2 s, on repasse en mode “pas de boost”
                 self.boost_timer = 0.0
                 self.is_boosting = False
                 self.can_boost   = True
 
+        # Animation squash/stretch
+        if self.scale_timer > 0:
+            self.scale_timer -= dt
+            t = max(0.0, 1.0 - (self.scale_timer / self.scale_duration))
+            self.scale = Vector2(
+                1 + (self.target_scale.x - 1) * (1 - t),
+                1 + (self.target_scale.y - 1) * (1 - t)
+            )
+        else:
+            self.scale = Vector2(1, 1)
+
     def check_bounce_edges(self, width, height):
-        # Rebond sur le bord gauche/droite
+        rebondi = False
+
         if self.pos.x - self.radius < 0:
             self.pos.x = self.radius
             self.vel.x *= -self.restitution
-            self.clamp_velocity()
+            rebondi = True
         elif self.pos.x + self.radius > width:
             self.pos.x = width - self.radius
             self.vel.x *= -self.restitution
-            self.clamp_velocity()
+            rebondi = True
 
-        # Rebond sur le bord haut/bas
         if self.pos.y - self.radius < 0:
             self.pos.y = self.radius
             self.vel.y *= -self.restitution
-            self.clamp_velocity()
+            rebondi = True
         elif self.pos.y + self.radius > height:
             self.pos.y = height - self.radius
             self.vel.y *= -self.restitution
+            rebondi = True
+
+        if rebondi:
             self.clamp_velocity()
+            self.scale_timer  = self.scale_duration
+            if abs(self.vel.y) > abs(self.vel.x):  # Rebond vertical
+                self.target_scale = Vector2(1.4, 0.6)
+            else:  # Rebond horizontal
+                self.target_scale = Vector2(0.6, 1.4)
 
     def check_circle_collision(self, autre):
-        """
-        Détection + résolution d’une collision parfaitement élastique avec une autre balle.
-        Si la collision est détectée et que self.can_boost est True, on active le boost
-        (i.e. self.is_boosting = True pendant 0,2 s), puis on bloque can_boost = False
-        jusqu’à la fin du timer.
-        """
         offset  = self.pos - autre.pos
         dist_sq = offset.length_squared()
         rayon_min = self.radius + autre.radius
@@ -108,42 +119,37 @@ class Balle:
             overlap  = rayon_min - dist
             normal   = offset.normalize()
 
-            # 1) On repousse les deux balles pour qu’elles ne se chevauchent pas
             correction = normal * (overlap / 2)
             self.pos  += correction
             autre.pos -= correction
 
-            # 2) Calcul de l’impulsion élastique
             rel_vel = self.vel - autre.vel
             vel_norm = rel_vel.dot(normal)
 
             if vel_norm < 0:
-                # Impulsion standard choc élastique 1D sur la normale
                 impulse = (2 * vel_norm) / (self.mass + autre.mass)
-                self.vel   -= impulse * autre.mass * normal
-                autre.vel  += impulse * self.mass     * normal
+                self.vel  -= impulse * autre.mass * normal
+                autre.vel += impulse * self.mass     * normal
 
-                # On clamp les deux vitesses juste après l’impulsion
                 self.clamp_velocity()
                 autre.clamp_velocity()
 
-                # 3) Si self peut encore être boosté → on démarre le boost
                 if self.can_boost:
                     self.is_boosting  = True
                     self.can_boost    = False
                     self.boost_timer  = BOOST_DURATION
-                    # Note : on n’applique PAS self.vel *= BOOST_FACTOR ici,
-                    #       car le multipliant ne sert qu’au moment du déplacement.
 
-                # 4) Même chose pour l’autre balle
                 if autre.can_boost:
                     autre.is_boosting  = True
                     autre.can_boost    = False
                     autre.boost_timer  = BOOST_DURATION
 
+                # Squash/stretch sur collision entre balles
+                self.scale_timer  = self.scale_duration
+                self.target_scale = Vector2(1.4, 0.6)
+
+                autre.scale_timer  = autre.scale_duration
+                autre.target_scale = Vector2(1.4, 0.6)
+
     def check_wall_cercle_collision(self, cercle):
-        """
-        Votre code existant pour gérer le rebond sur un arc de cercle
-        (ou la “cassure” si la balle tombe dans le trou).
-        """
         return cercle.check_wall_cercle_collision(self)
